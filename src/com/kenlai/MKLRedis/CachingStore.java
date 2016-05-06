@@ -1,40 +1,34 @@
 package com.kenlai.MKLRedis;
 
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.LinkedList;
 import java.util.List;
-import java.util.TreeSet;
 import java.util.regex.Pattern;
 
-/*
- SET key value
- SET key value EX seconds (need not implement other SET options)
- GET key
- DEL key
- DBSIZE
- INCR key
- ZADD key score member
- ZCARD key
- ZRANK key member
- ZRANGE key start stop
+/**
+ * Basic key-value store with expiration and sorted set support.
  */
-
 public class CachingStore {
+    private boolean verbose = Boolean.getBoolean("verbose");
+    private boolean debug = Boolean.getBoolean("debug");
+    private int initialSize = Integer.getInteger("initialSize", 16);
+
     private static final String OK = "OK";
 
-    private final static Pattern validatorPattern = Pattern
-            .compile("\\A[ a-zA-Z0-9-_]*\\z");
-    private final static Pattern integerPattern = Pattern
-            .compile("\\A[+-]?[0-9]+\\z");
+    private final static Pattern validatorPattern =
+            Pattern.compile("\\A[ a-zA-Z0-9-_]*\\z");
+    private final static Pattern integerPattern =
+            Pattern.compile("\\A[+-]?[0-9]+\\z");
 
     private HashMap<String, Object> map;
 
     private List<String> expirables = new LinkedList<>();
 
     public CachingStore() {
-        // TODO: look into sensible and/or configurable initial sizes
-        map = new HashMap<String, Object>();
+        map = new HashMap<String, Object>(initialSize);
     }
 
     public CachingStore(int size) {
@@ -48,7 +42,7 @@ public class CachingStore {
      */
     public String process(String fullCmd) {
         if (!validatorPattern.matcher(fullCmd).matches()) {
-            System.out.println("invalid input characters detected");
+            verbosePrintln("invalid input characters detected");
             return "ERROR invalid input characters detected";
         }
         String[] tokens = fullCmd.split(" ");
@@ -60,7 +54,7 @@ public class CachingStore {
                 if (tokens.length == 5 && tokens[3].equals("EX")) {
                     expiration = Long.getLong(tokens[4]);
                 } else if (tokens.length != 3) {
-                    System.out.println("incorrect parameters for SET");
+                    verbosePrintln("incorrect parameters for SET");
                     return "ERROR bad SET parameters";
                 }
                 return set(tokens[1], tokens[2], expiration);
@@ -77,14 +71,14 @@ public class CachingStore {
                 verifyLength(tokens, 1);
                 return Integer.toString(dbsize());
             default:
-                System.out.println("Command " + tokens[0]
+                verbosePrintln("Command " + tokens[0]
                         + " is not yet implemented");
             }
         } catch (IllegalArgumentException e) {
-            System.out.println("bad command: " + tokens[0]);
+            verbosePrintln("bad command: " + tokens[0]);
             return "ERROR bad command";
         } catch (IndexOutOfBoundsException e) {
-            System.out.println("incorrect number of parameters");
+            verbosePrintln("incorrect number of parameters");
             return "ERROR number of parameters";
         }
         return null;
@@ -126,11 +120,11 @@ public class CachingStore {
     }
 
     /**
-     * Get the value of key. If the key does not exist the special value nil is
+     * Get the value of key. If the key does not exist null is
      * returned. An error is returned if the value stored at key is not a
      * string, because GET only handles string values.
      *
-     * @return the value of key, or nil when key does not exist
+     * @return the value of key, or null when key does not exist
      */
     public String get(String key) {
         Object value = getUnexpired(key);
@@ -245,55 +239,122 @@ public class CachingStore {
         return value;
     }
 
-
+    /**
+     * Adds the specified member with the specified score to the sorted set
+     * stored at key. If a specified member is already a member of the sorted
+     * set, the score is updated and the element reinserted at the right
+     * position to ensure the correct ordering.
+     */
     public String zadd(String key, long score, String member) {
-        TreeSet<ScoredMember> sortedSet = null;
+        HashTreeSet sortedSet = null;
         Object value = map.get(key);
         if (value == null) {
-            sortedSet = new TreeSet<>();
+            sortedSet = new HashTreeSet();
             map.put(key, sortedSet);
-        } else if (value instanceof TreeSet<?>) {
-            @SuppressWarnings("unchecked")
-            TreeSet<ScoredMember> existing = (TreeSet<ScoredMember>) value;
-            sortedSet = existing;
+        } else if (value instanceof HashTreeSet) {
+            sortedSet = (HashTreeSet) value;
         } else {
             throw new IllegalArgumentException("value is incorrect type");
         }
-        sortedSet.add(new ScoredMember(score, member));
+        if (!sortedSet.add(new ScoredMember(score, member))) {
+            verbosePrintln("replaced member: " + member);
+        }
         return OK;
     }
 
+    /**
+     * @return the sorted set cardinality (number of elements) of the sorted set
+     *         stored at key.
+     */
     public int zcard(String key) {
         Object value = map.get(key);
         if (value == null) {
             return 0;
         }
-        if (value instanceof TreeSet<?>) {
-            @SuppressWarnings("unchecked")
-            TreeSet<ScoredMember> sortedSet = (TreeSet<ScoredMember>) value;
+        if (value instanceof HashTreeSet) {
+            HashTreeSet sortedSet = (HashTreeSet) value;
             return sortedSet.size();
         }
         throw new IllegalArgumentException("value is incorrect type");
     }
 
-    public int zrank(String key, String member) {
+    /**
+     * Returns the rank of member in the sorted set stored at key, with the
+     * scores ordered from low to high. The rank (or index) is 0-based, which
+     * means that the member with the lowest score has rank 0.
+     *
+     * @param key key to retrieve sorted set
+     * @param member value to seek in sorted set
+     * @return 0-based index in sorted set; null if not found
+     */
+    public Integer zrank(String key, String member) {
         Object value = map.get(key);
-        if (value instanceof TreeSet<?>) {
-            @SuppressWarnings("unchecked")
-            TreeSet<ScoredMember> sortedSet = (TreeSet<ScoredMember>) value;
-
-            // TODO: implement
+        if (value instanceof HashTreeSet) {
+            HashTreeSet sortedSet = (HashTreeSet) value;
+            int rank = 0;
+            for (ScoredMember m : sortedSet) {
+                if (m.member.equals(member)) {
+                    return rank;
+                }
+                rank++;
+            }
+            return null;
         }
         throw new IllegalArgumentException("value is incorrect type");
     }
 
-    public int zrange(String key, int start, int stop) {
+    /**
+     * Returns the specified range of elements in the sorted set stored at key.
+     * The elements are considered to be ordered from the lowest to the highest
+     * score. Lexicographical order is used for elements with equal score.
+     * <p>
+     * Indices can also be negative numbers indicating offsets from the end of
+     * the sorted set, with -1 being the last element of the sorted set.
+     *
+     * @param key key to retrieve sorted set
+     * @param start 0-based index, inclusive
+     * @param stop 0-based index, inclusive
+     * @return list of member values
+     */
+    public List<String> zrange(String key, int start, int stop) {
         Object value = map.get(key);
-        if (value instanceof TreeSet<?>) {
-            @SuppressWarnings("unchecked")
-            TreeSet<ScoredMember> sortedSet = (TreeSet<ScoredMember>) value;
-//            sortedSet.subSet(fromElement, fromInclusive, toElement, toInclusive);
+        if (value == null) {
+            return Collections.emptyList();
+        }
+        if (value instanceof HashTreeSet) {
+            HashTreeSet sortedSet = (HashTreeSet) value;
+            int size = sortedSet.size();
+            int begin = start < 0 ? size + start : start;
+            int end = stop < 0 ? size + stop : stop;
+            if (begin >= size || end < begin) {
+                return Collections.emptyList();
+            }
+            if (end >= size) {
+                end = size - 1;
+            }
+            if (debug) {
+                assert(begin >=0 && end < size);
+            }
+            verbosePrintln("begin=" + begin + " end=" + end);
+            Iterator<ScoredMember> iterator = sortedSet.iterator();
+            int i = 0;
+            while (i < begin) {
+                iterator.next();
+                i++;
+            }
+            List<String> list = new ArrayList<>(end - begin + 1);
+            while (i <= end) {
+                list.add(iterator.next().getMember());
+                i++;
+            }
+            return list;
         }
         throw new IllegalArgumentException("value is incorrect type");
+    }
+
+    private void verbosePrintln(String msg) {
+        if (verbose) {
+            System.out.println(msg);
+        }
     }
 }
