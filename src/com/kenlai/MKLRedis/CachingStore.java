@@ -4,7 +4,6 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Iterator;
-import java.util.LinkedList;
 import java.util.List;
 import java.util.regex.Pattern;
 
@@ -14,80 +13,18 @@ import java.util.regex.Pattern;
 public class CachingStore {
     private boolean verbose = Boolean.getBoolean("verbose");
     private boolean debug = Boolean.getBoolean("debug");
-    private int initialSize = Integer.getInteger("initialSize", 16);
 
     private static final String OK = "OK";
 
-    private final static Pattern validatorPattern =
-            Pattern.compile("\\A[ a-zA-Z0-9-_]*\\z");
     private final static Pattern integerPattern =
             Pattern.compile("\\A[+-]?[0-9]+\\z");
 
     private HashMap<String, Object> map;
 
-    private List<String> expirables = new LinkedList<>();
-
-    public CachingStore() {
-        map = new HashMap<String, Object>(initialSize);
-    }
+    private HashTreeSet expirables = new HashTreeSet();
 
     public CachingStore(int size) {
         map = new HashMap<String, Object>(size);
-    }
-
-    /**
-     * Parses the full command string and forwards to appropriate method.
-     *
-     * @return result value of the command
-     */
-    public String process(String fullCmd) {
-        if (!validatorPattern.matcher(fullCmd).matches()) {
-            verbosePrintln("invalid input characters detected");
-            return "ERROR invalid input characters detected";
-        }
-        String[] tokens = fullCmd.split(" ");
-        try {
-            Command cmd = Command.valueOf(tokens[0]);
-            switch (cmd) {
-            case SET:
-                Long expiration = null;
-                if (tokens.length == 5 && tokens[3].equals("EX")) {
-                    expiration = Long.getLong(tokens[4]);
-                } else if (tokens.length != 3) {
-                    verbosePrintln("incorrect parameters for SET");
-                    return "ERROR bad SET parameters";
-                }
-                return set(tokens[1], tokens[2], expiration);
-            case GET:
-                verifyLength(tokens, 2);
-                return get(tokens[1]);
-            case INCR:
-                verifyLength(tokens, 2);
-                return incr(tokens[1]).toString();
-            case DEL:
-                verifyLength(tokens, 2);
-                return Integer.toString(del(tokens[1]));
-            case DBSIZE:
-                verifyLength(tokens, 1);
-                return Integer.toString(dbsize());
-            default:
-                verbosePrintln("Command " + tokens[0]
-                        + " is not yet implemented");
-            }
-        } catch (IllegalArgumentException e) {
-            verbosePrintln("bad command: " + tokens[0]);
-            return "ERROR bad command";
-        } catch (IndexOutOfBoundsException e) {
-            verbosePrintln("incorrect number of parameters");
-            return "ERROR number of parameters";
-        }
-        return null;
-    }
-
-    private void verifyLength(String[] tokens, int length) {
-        if (tokens.length != length) {
-            throw new IllegalArgumentException("incorrect number of parameters");
-        }
     }
 
     /**
@@ -108,11 +45,16 @@ public class CachingStore {
      * but it incurs O(log(n)) for insertion.
      */
     private void garbageCollect() {
-        Iterator<String> iterator = expirables.iterator();
+        long currentTime = System.currentTimeMillis();
+        Iterator<ScoredMember> iterator = expirables.iterator();
         while (iterator.hasNext()) {
-            String key = iterator.next();
-            ExpirableValue ev = (ExpirableValue) map.get(key);
-            if (ev.isExpired()) {
+            ScoredMember m = iterator.next();
+            if (m.score < currentTime) {
+                String key = m.getMember();
+                if (debug) {
+                    ExpirableValue ev = (ExpirableValue) map.get(key);
+                    assert ev.isExpired();
+                }
                 iterator.remove();
                 map.remove(key);
             }
@@ -128,6 +70,9 @@ public class CachingStore {
      */
     public String get(String key) {
         Object value = getUnexpired(key);
+        if (value instanceof HashTreeSet) {
+            throw new IllegalArgumentException("incorrect value type");
+        }
         return value != null ? value.toString() : null;
     }
 
@@ -158,7 +103,7 @@ public class CachingStore {
         }
         // clean from expirables lists
         if (value instanceof ExpirableValue) {
-            expirables.remove(key);
+            expirables.removeByMember(key);
         }
         return 1;
     }
@@ -183,7 +128,7 @@ public class CachingStore {
             }
             long expiresAt = System.currentTimeMillis() + timeToLive * 1000;
             val = new ExpirableValue(val, expiresAt);
-            expirables.add(key);
+            expirables.add(new ScoredMember(expiresAt, key));
         }
         map.put(key, val);
         return OK;

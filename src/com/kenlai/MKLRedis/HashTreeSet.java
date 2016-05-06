@@ -27,4 +27,11 @@ public class HashTreeSet extends TreeSet<ScoredMember> {
         return super.add(e) && existingMember != null;
     }
 
+    public boolean removeByMember(String value) {
+        ScoredMember remove = hashMap.remove(value);
+        if (remove != null) {
+            return super.remove(remove);
+        }
+        return false;
+    }
 }

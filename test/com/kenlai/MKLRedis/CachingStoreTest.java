@@ -3,7 +3,6 @@ package com.kenlai.MKLRedis;
 import static org.junit.Assert.assertArrayEquals;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import java.util.List;
@@ -12,19 +11,10 @@ import org.junit.Test;
 
 public class CachingStoreTest {
     private static final String OK = "OK";
-    private static final String ERROR = "ERROR";
-
-    @Test
-    public void testProcess() {
-        CachingStore store = new CachingStore();
-        assertEquals(OK, store.process("SET foo bar"));
-        assertTrue(store.process("BAD").startsWith(ERROR));
-        assertTrue(store.process("What+is&this?").startsWith(ERROR));
-    }
 
     @Test
     public void testCachingStore() throws Exception {
-        CachingStore store = new CachingStore();
+        CachingStore store = new CachingStore(16);
 
         // CASE: SET, GET, EX, DBSIZE
         assertEquals(OK, store.set("A", "A", 1L));
@@ -32,7 +22,7 @@ public class CachingStoreTest {
         assertEquals("A", store.get("A"));
         assertEquals("B", store.get("B"));
         assertEquals(2, store.dbsize());
-        Thread.sleep(1000L);
+        Thread.sleep(2000L);
         assertNull(store.get("A"));
         assertEquals("B", store.get("B"));
         assertEquals(1, store.dbsize());
@@ -49,7 +39,7 @@ public class CachingStoreTest {
         assertEquals(OK, store.set("B", "3", 1L));
         assertEquals("4", store.incr("B").toString());
         assertEquals(1, store.dbsize());
-        Thread.sleep(1000L);
+        Thread.sleep(2000L);
         assertNull(store.get("B"));
         assertEquals(0, store.dbsize());
 
@@ -92,7 +82,7 @@ public class CachingStoreTest {
 
     @Test
     public void testSortedSet() {
-        CachingStore store = new CachingStore();
+        CachingStore store = new CachingStore(16);
         // CASE: not-exist / empty
         assertEquals(0, store.zcard("Z"));
         List<String> list = store.zrange("Z", 0, 0);
