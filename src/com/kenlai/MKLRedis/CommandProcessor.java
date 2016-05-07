@@ -36,7 +36,8 @@ public class CommandProcessor {
                 return store.set(tokens[1], tokens[2], expiration);
             case GET:
                 verifyLength(tokens, 2);
-                return store.get(tokens[1]);
+                String value = store.get(tokens[1]);
+                return (value == null) ? "(nil)" : value;
             case INCR:
                 verifyLength(tokens, 2);
                 return store.incr(tokens[1]).toString();

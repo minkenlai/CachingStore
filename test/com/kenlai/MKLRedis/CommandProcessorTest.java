@@ -16,6 +16,7 @@ public class CommandProcessorTest {
         assertEquals(OK, cp.process("SET foo bar"));
         assertTrue(cp.process("BAD").startsWith(ERROR));
         assertTrue(cp.process("What+is&this?").startsWith(ERROR));
+        assertEquals("(nil)", cp.process("GET bar"));
 
         assertEquals("1", cp.process("INCR numerical"));
         assertEquals("2", cp.process("DBSIZE"));
