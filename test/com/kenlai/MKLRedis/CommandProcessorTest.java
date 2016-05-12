@@ -9,7 +9,8 @@ public class CommandProcessorTest {
     private static final String OK = "OK";
     private static final String ERROR = "ERROR";
 
-    private CommandProcessor cp = new CommandProcessor();
+    private CachingStore store = new CachingStore(16);
+    private CommandProcessor cp = new CommandProcessor(store);
 
     @Test
     public void testProcess() {

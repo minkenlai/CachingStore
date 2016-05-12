@@ -1,27 +1,34 @@
 package com.kenlai.MKLRedis;
 
+import java.util.List;
 import java.util.regex.Pattern;
 
 public class CommandProcessor {
     private boolean verbose = Boolean.getBoolean("verbose");
-    private int initialSize = Integer.getInteger("initialSize", 16);
 
     private final static Pattern validatorPattern =
             Pattern.compile("\\A[ a-zA-Z0-9-_]*\\z");
 
-    private CachingStore store = new CachingStore(initialSize);
+    private CachingStore store;
+
+    public CommandProcessor(CachingStore store) {
+        this.store = store;
+    }
 
     /**
      * Parses the full command string and forwards to appropriate method.
      *
      * @return result value of the command
      */
-    public String process(String fullCmd) {
-        if (!validatorPattern.matcher(fullCmd).matches()) {
+    public String process(String request) {
+        if (request.isEmpty()) {
+            return null;
+        }
+        if (!validatorPattern.matcher(request).matches()) {
             verbosePrintln("invalid input characters detected");
             return "ERROR invalid input characters detected";
         }
-        String[] tokens = fullCmd.split(" ");
+        String[] tokens = request.split(" ");
         try {
             Command cmd = Command.valueOf(tokens[0]);
             switch (cmd) {
@@ -81,12 +88,16 @@ public class CommandProcessor {
         }
     }
 
-    private String listToString(Iterable<String> list) {
+    private String listToString(List<String> list) {
+        if (list.isEmpty()) {
+            return "";
+        }
         StringBuilder sb = new StringBuilder();
         for (String s : list) {
             sb.append(s);
-            sb.append("\n");
+            sb.append(" ");
         }
+        sb.setLength(sb.length() - 1);
         return sb.toString();
     }
 
