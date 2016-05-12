@@ -32,7 +32,9 @@ public class CommandProcessorTest {
         assertEquals("1", cp.process("ZCARD set"));
         assertEquals("OK", cp.process("ZADD set 10 tenB"));
         assertEquals("1", cp.process("ZRANK set tenB"));
-        assertEquals("tenB\n", cp.process("ZRANGE set -1 -1"));
+        assertEquals("tenB", cp.process("ZRANGE set -1 -1"));
+        assertEquals("OK", cp.process("ZADD set 5 five"));
+        assertEquals("five ten tenB", cp.process("ZRANGE set 0 -1"));
 
         assertTrue(cp.process("GET set").startsWith(ERROR));
         assertTrue(cp.process("INCR set").startsWith(ERROR));
