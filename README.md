@@ -10,7 +10,7 @@ Can handle multiple simultaneous connections, but the requests are serialized an
 * debug - set to `true` to enable debug asserts
 
 ## Server command arguments
-Appliation accepts a single argument, a port number.  Default: 5555
+Application accepts a single argument, a port number.  Default: 5555
 
 ## Supported commands:
 * SET key value
